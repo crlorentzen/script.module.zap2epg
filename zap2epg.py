@@ -19,18 +19,14 @@ import base64
 import codecs
 import time
 import datetime
-import _strptime
 import calendar
 import gzip
 import os
 import logging
 import re
 import json
-import sys
-from os.path import dirname
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
-import hashlib
 
 
 def mainRun(userdata):
@@ -100,8 +96,8 @@ def mainRun(userdata):
     logging.info('Running zap2epg-0.7.4 for zipcode: %s and lineup: %s', zipcode, lineup)
     pythonStartTime = time.time()
     cacheDir = os.path.join(userdata, 'cache')
-    dayHours = int(days) * 8 # set back to 8 when done testing
-    gridtimeStart = (int(time.mktime(time.strptime(str(datetime.datetime.now().replace(microsecond=0,second=0,minute=0)), '%Y-%m-%d %H:%M:%S'))))
+    dayHours = int(days) * 8  # set back to 8 when done testing
+    gridtimeStart = (int(time.mktime(time.strptime(str(datetime.datetime.now().replace(microsecond=0, second=0, minute=0)), '%Y-%m-%d %H:%M:%S'))))
     schedule = {}
     tvhMatchDict = {}
 
@@ -135,15 +131,15 @@ def mainRun(userdata):
                 for entry in entries:
                     oldfile = entry.split('.')[0]
                     if oldfile.isdigit():
-                        fn = os.path.join(cacheDir, entry)
                         if (int(oldfile)) < (gridtimeStart + (int(redays) * 86400)):
                             try:
+                                fn = os.path.join(cacheDir, entry)
                                 os.remove(fn)
                                 logging.info('Deleting old cache: %s', entry)
                             except OSError, e:
                                 logging.warn('Error Deleting: %s - %s.' % (e.filename, e.strerror))
         except Exception as e:
-            logging.exception('Exception: deleteOldCache - %s', e.strerror)
+            logging.exception('Exception: deleteOldCache - %s', repr(e))
 
     def deleteOldShowCache(showList):
         logging.info('Checking for old show cache files...')
@@ -161,100 +157,59 @@ def mainRun(userdata):
                             except OSError, e:
                                 logging.warn('Error Deleting: %s - %s.' % (e.filename, e.strerror))
         except Exception as e:
-            logging.exception('Exception: deleteOldshowCache - %s', e.strerror)
+            logging.exception('Exception: deleteOldshowCache - %s', repr(e))
 
     def convTime(t):
-        return time.strftime("%Y%m%d%H%M%S",time.localtime(int(t)))
+        return time.strftime("%Y%m%d%H%M%S", time.localtime(int(t)))
 
-    def savepage(fn, data):
-        if not os.path.exists(cacheDir):
-            os.mkdir(cacheDir)
-        fileDir = os.path.join(cacheDir, fn)
-        with gzip.open(fileDir,"wb+") as f:
+    def savepage(fileDir, data):
+        with gzip.open(fileDir, "wb+") as f:
             f.write(data)
             f.close()
 
     def genreSort(EPfilter, EPgenre):
         genreList = []
-        if epgenre == '2':
-            # for f in EPfilter:
-            #     fClean = re.sub('filter-','',f)
-            #     genreList.append(fClean)
-            for g in EPgenre:
-                if g != "Comedy":
-                    genreList.append(g)
-            if 'Movie' in genreList or 'movie' in genreList or 'Movies' in genreList:
-                genreList.insert(0, "Movie / Drama")
-            if 'News' in genreList:
-                genreList.insert(0, "News / Current affairs")
-            if 'Game show' in genreList:
-                genreList.insert(0, "Game show / Quiz / Contest")
-            if 'Law' in genreList:
-                genreList.insert(0, "Show / Game show")
-            if 'Art' in genreList or 'Culture' in genreList:
-                genreList.insert(0, "Arts / Culture (without music)")
-            if 'Entertainment' in genreList:
-                genreList.insert(0, "Popular culture / Traditional Arts")
-            if 'Politics' in genreList or 'Social' in genreList or 'Public affairs' in genreList:
-                genreList.insert(0, "Social / Political issues / Economics")
-            if 'Education' in genreList or 'Science' in genreList:
-                genreList.insert(0, "Education / Science / Factual topics")
-            if 'How-to' in genreList:
-                genreList.insert(0, "Leisure hobbies")
-            if 'Travel' in genreList:
-                genreList.insert(0, "Tourism / Travel")
-            if 'Sitcom' in genreList:
-                genreList.insert(0, "Variety show")
-            if 'Talk' in genreList:
-                genreList.insert(0, "Talk show")
-            if 'Children' in genreList:
-                genreList.insert(0, "Children's / Youth programs")
-            if 'Animated' in genreList:
-                genreList.insert(0, "Cartoons / Puppets")
-            if 'Music' in genreList:
-                genreList.insert(0, "Music / Ballet / Dance")
-        if epgenre == '1':
-            # for f in EPfilter:
-            #     fClean = re.sub('filter-','',f)
-            #     genreList.append(fClean)
+        genreMapping = {
+            # Sorted in the order listed in the TVH Web UI
+            "art":              "Arts / Culture (without music)",
+            "children":         "Children's / Youth programs",
+            "family":           "Children's / Youth programs",
+            "education":        "Education / Science / Factual topics",
+            "how-to":           "Leisure hobbies",
+            "movie":            "Movie / Drama",
+            "movies":           "Movie / Drama",
+            "music":            "Music / Ballet / Dance",
+            "news":             "News / Current affairs",
+            "game-show":        "Game show / Quiz / Contest",
+            "law":              "Show / Game show",
+            "talk":             "Talk show",
+            "politics":         "Social / Political issues / Economics",
+            "sports":           "Sports",
+            # The followings are not directly available form TVH Web UI:
+            "entertainment":    "Popular culture / Traditional Arts",
+            "travel":           "Tourism / Travel",
+            "sitcom":           "Variety show",
+            "animated":         "Cartoons / Puppets",
+        }
+
+        if EPfilter is not None:
+            for f in EPfilter:
+                fClean = re.sub('filter-', '', f).lower()
+                if fClean in genreMapping:
+                    genreList.append(genreMapping[fClean])
+                else:
+                    logging.warning("Unsupported category: %s, will not be stored in the xmltv", fClean)
+
+        if EPgenre is not None:
             for g in EPgenre:
                 genreList.append(g)
-            if 'Movie' in genreList or 'movie' in genreList or 'Movies' in genreList:
-                genreList = ["Movie / Drama"]
-            elif 'News' in genreList:
-                genreList = ["News / Current affairs"]
-            elif 'News magazine' in genreList:
-                genreList = ["News magazine"]
-            elif 'Public affairs' in genreList:
-                genreList = ["News / Current affairs"]
-            elif 'Interview' in genreList:
-                genreList = ["Discussion / Interview / Debate"]
-            elif 'Game show' in genreList:
-                genreList = ["Game show / Quiz / Contest"]
-            elif 'Talk' in genreList:
-                genreList = ["Talk show"]
-            elif 'Sports' in genreList:
-                genreList = ["Sports"]
-            elif 'Sitcom' in genreList:
-                genreList = ["Variety show"]
-            elif 'Children' in genreList:
-                genreList = ["Children's / Youth programs"]
-            else:
-                genreList = ["Variety show"]
-        if epgenre == '3':
-            # for f in EPfilter:
-            #     fClean = re.sub('filter-','',f)
-            #     genreList.append(fClean)
-            for g in EPgenre:
-                genreList.append(g)
-        if 'Movie' in genreList:
-            genreList.remove('Movie')
-            genreList.insert(0, 'Movie')
+
         return genreList
 
     def printHeader(fh, enc):
         logging.info('Creating xmltv.xml file...')
-        fh.write("<?xml version=\"1.0\" encoding=\""+ enc + "\"?>\n")
+        fh.write("<?xml version=\"1.0\" encoding=\"" + enc + "\"?>\n")
+        fh.write("<?xml-stylesheet href=\"xmltv.xsl\" type=\"text/xsl\"?>\n")
         fh.write("<!DOCTYPE tv SYSTEM \"xmltv.dtd\">\n\n")
         fh.write("<tv source-info-url=\"http://tvschedule.zap2it.com/\" source-info-name=\"zap2it.com\">\n")
 
@@ -267,23 +222,23 @@ def mainRun(userdata):
         try:
             logging.info('Writing Stations to xmltv.xml file...')
             try:
-                scheduleSort = OrderedDict(sorted(schedule.iteritems(), key=lambda x: int(x[1]['chnum'])))
+                scheduleSort = OrderedDict(sorted(schedule.iteritems(), key=lambda x: float(x[1]['chnum'])))
             except:
                 scheduleSort = OrderedDict(sorted(schedule.iteritems(), key=lambda x: x[1]['chfcc']))
             for station in scheduleSort:
                 fh.write('\t<channel id=\"' + station + '.zap2epg\">\n')
                 if 'chtvh' in scheduleSort[station] and scheduleSort[station]['chtvh'] is not None:
-                    xchtvh = re.sub('&','&amp;',scheduleSort[station]['chtvh'])
+                    xchtvh = re.sub('&', '&amp;', scheduleSort[station]['chtvh'])
                     fh.write('\t\t<display-name>' + xchtvh + '</display-name>\n')
                 if 'chnum' in scheduleSort[station] and 'chfcc' in scheduleSort[station]:
                     xchnum = scheduleSort[station]['chnum']
                     xchfcc = scheduleSort[station]['chfcc']
-                    fh.write('\t\t<display-name>' + xchnum + ' ' + re.sub('&','&amp;',xchfcc) + '</display-name>\n')
-                    fh.write('\t\t<display-name>' + re.sub('&','&amp;',xchfcc) + '</display-name>\n')
+                    fh.write('\t\t<display-name>' + xchnum + ' ' + re.sub('&', '&amp;', xchfcc) + '</display-name>\n')
+                    fh.write('\t\t<display-name>' + re.sub('&', '&amp;', xchfcc) + '</display-name>\n')
                     fh.write('\t\t<display-name>' + xchnum + '</display-name>\n')
                 elif 'chfcc' in scheduleSort[station]:
-                    xchnum = scheduleSort[station]['chfcc']
-                    fh.write('\t\t<display-name>' + re.sub('&','&amp;',xcfcc) + '</display-name>\n')
+                    xchfcc = scheduleSort[station]['chfcc']
+                    fh.write('\t\t<display-name>' + re.sub('&','&amp;', xchfcc) + '</display-name>\n')
                 elif 'chnum' in scheduleSort[station]:
                     xchnum = scheduleSort[station]['chnum']
                     fh.write('\t\t<display-name>' + xchnum + '</display-name>\n')
@@ -301,9 +256,15 @@ def mainRun(userdata):
             logging.info('Writing Episodes to xmltv.xml file...')
             if xdesc is True:
                 logging.info('Appending Xdetails to description for xmltv.xml file...')
-            for station in schedule:
+
+            try:
+                scheduleSort = OrderedDict(sorted(schedule.iteritems(), key=lambda x: float(x[1]['chnum'])))
+            except:
+                scheduleSort = OrderedDict(sorted(schedule.iteritems(), key=lambda x: x[1]['chfcc']))
+
+            for station in scheduleSort:
                 lang = 'en'
-                sdict = schedule[station]
+                sdict = OrderedDict(sorted(schedule[station].iteritems()))
                 for episode in sdict:
                     if not episode.startswith("ch"):
                         try:
@@ -317,18 +278,21 @@ def mainRun(userdata):
                                 dd_progid = edict['epid']
                                 fh.write('\t\t<episode-num system=\"dd_progid\">' + dd_progid[:-4] + '.' + dd_progid[-4:] + '</episode-num>\n')
                                 if edict['epshow'] is not None:
-                                    fh.write('\t\t<title lang=\"' + lang + '\">' + re.sub('&','&amp;',edict['epshow']) + '</title>\n')
+                                    fh.write('\t\t<title lang=\"' + lang + '\">' + re.sub('&', '&amp;', edict['epshow']) + '</title>\n')
                                 if edict['eptitle'] is not None:
-                                    fh.write('\t\t<sub-title lang=\"'+ lang + '\">' + re.sub('&','&amp;', edict['eptitle']) + '</sub-title>\n')
+                                    fh.write('\t\t<sub-title lang=\"' + lang + '\">' + re.sub('&', '&amp;', edict['eptitle']) + '</sub-title>\n')
+                                # no subtitle, but year provided: write movie year as subtitle
+                                if edict['eptitle'] is None and edict['epyear'] is not None:
+                                    fh.write('\t\t<sub-title lang=\"' + lang + '\">Movie (' + edict['epyear'] + ')</sub-title>\n')
                                 if xdesc == 'true':
                                     xdescSort = addXDetails(edict)
                                     fh.write('\t\t<desc lang=\"' + lang + '\">' + re.sub('&','&amp;', xdescSort) + '</desc>\n')
                                 if xdesc == 'false':
                                     if edict['epdesc'] is not None:
-                                        fh.write('\t\t<desc lang=\"' + lang + '\">' + re.sub('&','&amp;', edict['epdesc']) + '</desc>\n')
+                                        fh.write('\t\t<desc lang=\"' + lang + '\">' + re.sub('&', '&amp;', edict['epdesc']) + '</desc>\n')
                                 if edict['epsn'] is not None and edict['epen'] is not None:
                                     fh.write("\t\t<episode-num system=\"onscreen\">" + 'S' + edict['epsn'].zfill(2) + 'E' + edict['epen'].zfill(2) + "</episode-num>\n")
-                                    fh.write("\t\t<episode-num system=\"xmltv_ns\">" + str(int(edict['epsn'])-1) +  "." + str(int(edict['epen'])-1) + ".</episode-num>\n")
+                                    fh.write("\t\t<episode-num system=\"xmltv_ns\">" + str(int(edict['epsn'])-1) + "." + str(int(edict['epen'])-1) + ".</episode-num>\n")
                                 if edict['epyear'] is not None:
                                     fh.write('\t\t<date>' + edict['epyear'] + '</date>\n')
                                 if not episode.startswith("MV"):
@@ -359,7 +323,7 @@ def mainRun(userdata):
                                 if edict['epstar'] is not None:
                                     fh.write('\t\t<star-rating>\n\t\t\t<value>' + edict['epstar'] + '/4</value>\n\t\t</star-rating>\n')
                                 if epgenre != '0':
-                                    if edict['epfilter'] is not None and edict['epgenres'] is not None:
+                                    if edict['epfilter'] is not None and len(edict['epfilter']) > 0 or edict['epgenres'] is not None and len(edict['epgenres']) > 0:
                                         genreNewList = genreSort(edict['epfilter'], edict['epgenres'])
                                         for genre in genreNewList:
                                             fh.write("\t\t<category lang=\"" + lang + "\">" + genre + "</category>\n")
@@ -441,44 +405,12 @@ def mainRun(userdata):
             ch_guide = json.loads(content)
             for station in ch_guide['channels']:
                 skey = station.get('channelId')
-                if stationList is not None:
-                    if skey in stationList:
-                        episodes = station.get('events')
-                        for episode in episodes:
-                            epkey = str(calendar.timegm(time.strptime(episode.get('startTime'), '%Y-%m-%dT%H:%M:%SZ')))
-                            schedule[skey][epkey] = {}
-                            schedule[skey][epkey]['epid'] = episode['program'].get('tmsId')
-                            schedule[skey][epkey]['epstart'] = str(calendar.timegm(time.strptime(episode.get('startTime'), '%Y-%m-%dT%H:%M:%SZ')))
-                            schedule[skey][epkey]['epend'] = str(calendar.timegm(time.strptime(episode.get('endTime'), '%Y-%m-%dT%H:%M:%SZ')))
-                            schedule[skey][epkey]['eplength'] = episode.get('duration')
-                            schedule[skey][epkey]['epshow'] = episode['program'].get('title')
-                            schedule[skey][epkey]['eptitle'] = episode['program'].get('episodeTitle')
-                            schedule[skey][epkey]['epdesc'] = episode['program'].get('shortDesc')
-                            schedule[skey][epkey]['epyear'] = episode['program'].get('releaseYear')
-                            schedule[skey][epkey]['eprating'] = episode.get('rating')
-                            schedule[skey][epkey]['epflag'] = episode.get('flag')
-                            schedule[skey][epkey]['eptags'] = episode.get('tags')
-                            schedule[skey][epkey]['epsn'] = episode['program'].get('season')
-                            schedule[skey][epkey]['epen'] = episode['program'].get('episode')
-                            schedule[skey][epkey]['epthumb'] = episode.get('thumbnail')
-                            schedule[skey][epkey]['epoad'] = None
-                            schedule[skey][epkey]['epstar'] = None
-                            schedule[skey][epkey]['epfilter'] = episode.get('filter')
-                            schedule[skey][epkey]['epgenres'] = None
-                            schedule[skey][epkey]['epcredits'] = None
-                            schedule[skey][epkey]['epxdesc'] = None
-                            schedule[skey][epkey]['epseries'] = episode.get('seriesId')
-                            schedule[skey][epkey]['epimage'] = None
-                            schedule[skey][epkey]['epfan'] = None
-                            if "TBA" in schedule[skey][epkey]['epshow']:
-                                CheckTBA = "Unsafe"
-                            elif schedule[skey][epkey]['eptitle']:
-                                if "TBA" in schedule[skey][epkey]['eptitle']:
-                                    CheckTBA = "Unsafe"
-                else:
+
+                if (stationList is None) or (stationList is not None and skey in stationList):
                     episodes = station.get('events')
                     for episode in episodes:
                         epkey = str(calendar.timegm(time.strptime(episode.get('startTime'), '%Y-%m-%dT%H:%M:%SZ')))
+                        # Format is station key (id) : episode key (timestamp)
                         schedule[skey][epkey] = {}
                         schedule[skey][epkey]['epid'] = episode['program'].get('tmsId')
                         schedule[skey][epkey]['epstart'] = str(calendar.timegm(time.strptime(episode.get('startTime'), '%Y-%m-%dT%H:%M:%SZ')))
@@ -508,6 +440,7 @@ def mainRun(userdata):
                         elif schedule[skey][epkey]['eptitle']:
                             if "TBA" in schedule[skey][epkey]['eptitle']:
                                 CheckTBA = "Unsafe"
+
         except Exception as e:
             logging.exception('Exception: parseEpisodes')
         return CheckTBA
@@ -536,7 +469,7 @@ def mainRun(userdata):
                                         URLcontent = urllib2.Request(url, data=data)
                                         JSONcontent = urllib2.urlopen(URLcontent).read()
                                         if JSONcontent:
-                                            with open(fileDir,"wb+") as f:
+                                            with open(fileDir, "wb+") as f:
                                                 f.write(JSONcontent)
                                                 f.close()
                                             retry = 0
@@ -690,7 +623,7 @@ def mainRun(userdata):
                 myear = "Released: " + edict['epyear'] + space
             if edict['eprating'] is not None:
                 ratings = edict['eprating'] + space
-            if edict['epflag'] != []:
+            if edict['epflag']:
                 flagList = edict['epflag']
                 new = ' - '.join(flagList).upper() + space
             #if edict['epnew'] is not None:
@@ -701,7 +634,7 @@ def mainRun(userdata):
                 #new = edict['epprem'] + space
             #if edict['epfin'] is not None:
                 #new = edict['epfin'] + space
-            if edict['eptags'] != []:
+            if edict['eptags']:
                 tagsList = edict['eptags']
                 cc = ' | '.join(tagsList).upper() + space
             #if edict['ephd'] is not None:
@@ -740,7 +673,6 @@ def mainRun(userdata):
             return descsort
         except Exception as e:
             logging.exception('Exception: addXdetails to description')
-
 
     try:
         if not os.path.exists(cacheDir):
@@ -790,12 +722,13 @@ def mainRun(userdata):
             showList = []
         xmltv()
         deleteOldShowCache(showList)
-        timeRun = round((time.time() - pythonStartTime),2)
+        timeRun = round((time.time() - pythonStartTime), 2)
         logging.info('zap2epg completed in %s seconds. ', timeRun)
         logging.info('%s Stations and %s Episodes written to xmltv.xml file.', str(stationCount), str(episodeCount))
         return timeRun, stationCount, episodeCount
     except Exception as e:
         logging.exception('Exception: main')
+
 
 if __name__ == '__main__':
     userdata = os.getcwd()

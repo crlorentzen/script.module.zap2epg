@@ -1,3 +1,5 @@
+/.idea
+/addon_data
 /cache
 *.pyo
 *.log

@@ -1,4 +1,5 @@
-# zap2epg tv schedule grabber for kodi
+#!/usr/bin/env python
+# zap2epg tv schedule grabber
 ################################################################################
 #   This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
